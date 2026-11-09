@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { ProjectDataset, HistoryEntry } from '../types/projectData.ts';
+import { ProjectDataset, HistoryEntry, UserProjectSummary } from '../types/projectData.ts';
 
 // Guardar proyecto completo en Firestore con la jerarquía: proyectos/{projectId}/{subcollection}/{docId}
 export async function saveProjectToFirestore(
@@ -231,6 +231,76 @@ export function subscribeToProjectDoc(
       onError(error);
     }
   );
+}
+
+// Consultar lista de proyectos del usuario autenticado (propios y compartidos con docente)
+export async function fetchUserProjectsList(user: User): Promise<UserProjectSummary[]> {
+  const path = 'proyectos';
+  const projectsMap = new Map<string, UserProjectSummary>();
+
+  try {
+    // 1. Proyectos propios donde ownerId == user.uid
+    const ownerQuery = query(collection(db, path), where('ownerId', '==', user.uid));
+    const ownerSnap = await getDocs(ownerQuery);
+    ownerSnap.forEach((d) => {
+      const data = d.data();
+      projectsMap.set(d.id, {
+        id: d.id,
+        nombre: data.nombre || 'Proyecto sin nombre',
+        updatedAt: data.updatedAt,
+        semana_corte: data.semana_corte,
+        moneda: data.moneda || 'PEN',
+        presupuesto_autorizado: data.presupuesto_autorizado,
+        BAC: data.BAC,
+        isShared: false,
+        ownerEmail: data.ownerEmail,
+        ownerId: data.ownerId,
+      });
+    });
+
+    // 2. Proyectos compartidos con este usuario (docente o revisor)
+    if (user.email) {
+      try {
+        const sharedQuery = query(
+          collection(db, path),
+          where('sharedWithEmail', '==', user.email.trim().toLowerCase())
+        );
+        const sharedSnap = await getDocs(sharedQuery);
+        sharedSnap.forEach((d) => {
+          if (!projectsMap.has(d.id)) {
+            const data = d.data();
+            projectsMap.set(d.id, {
+              id: d.id,
+              nombre: data.nombre || 'Proyecto compartido',
+              updatedAt: data.updatedAt,
+              semana_corte: data.semana_corte,
+              moneda: data.moneda || 'PEN',
+              presupuesto_autorizado: data.presupuesto_autorizado,
+              BAC: data.BAC,
+              isShared: true,
+              ownerEmail: data.ownerEmail,
+              ownerId: data.ownerId,
+            });
+          }
+        });
+      } catch (sharedErr) {
+        console.warn('Consulta de proyectos compartidos:', sharedErr);
+      }
+    }
+  } catch (error) {
+    console.error('Error al listar proyectos en Firestore:', error);
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+
+  const list = Array.from(projectsMap.values());
+  // Ordenar por fecha de actualización descendente (el más reciente primero)
+  list.sort((a, b) => {
+    const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  return list;
 }
 
 // Cargar dataset completo con subcolecciones

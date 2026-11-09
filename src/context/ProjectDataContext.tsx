@@ -14,8 +14,9 @@ import {
   fetchFullProjectDataset,
   saveHistoryEntryToFirestore,
   fetchProjectHistory,
+  fetchUserProjectsList,
 } from '../services/firestoreService.ts';
-import { ProjectDataset, HistoryEntry } from '../types/projectData.ts';
+import { ProjectDataset, HistoryEntry, UserProjectSummary } from '../types/projectData.ts';
 
 interface ProjectDataContextType {
   projectData: ProjectDataset | null;
@@ -37,7 +38,12 @@ interface ProjectDataContextType {
   historyList: HistoryEntry[];
   addHistoryEntry: (entry: Omit<HistoryEntry, 'id' | 'fecha'>) => Promise<void>;
   restoreHistoryVersion: (entry: HistoryEntry) => Promise<void>;
+  userProjectsList: UserProjectSummary[];
+  isProjectsListLoading: boolean;
+  switchActiveProject: (projectId: string) => Promise<void>;
+  refreshUserProjects: () => Promise<void>;
 }
+
 
 const STORAGE_KEY = 'impulsa_project_data_v1';
 const DOCENTE_STORAGE_KEY = 'impulsa_docente_email_v1';
@@ -55,23 +61,75 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'local'>('local');
   const [isSavingToFirestore, setIsSavingToFirestore] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<HistoryEntry[]>([]);
+  const [userProjectsList, setUserProjectsList] = useState<UserProjectSummary[]>([]);
+  const [isProjectsListLoading, setIsProjectsListLoading] = useState<boolean>(false);
 
   const activeProjectIdRef = useRef<string | null>(null);
 
+  // Carga de proyectos desde Firestore para el usuario autenticado (prioriza la nube)
+  const loadFirestoreProjects = async (currentUser: User) => {
+    setIsProjectsListLoading(true);
+    setSyncStatus('syncing');
+    try {
+      const list = await fetchUserProjectsList(currentUser);
+      setUserProjectsList(list);
+
+      if (list.length > 0) {
+        // Seleccionar el proyecto que coincida con activeProjectIdRef o el primero (más reciente)
+        const targetSummary = list.find((p) => p.id === activeProjectIdRef.current) || list[0];
+        activeProjectIdRef.current = targetSummary.id;
+
+        const fullDataset = await fetchFullProjectDataset(targetSummary.id);
+        if (fullDataset) {
+          setProjectData(fullDataset);
+          // Respaldo en localStorage para disponibilidad sin conexión
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(fullDataset));
+          } catch (e) {}
+
+          if (fullDataset.proyecto?.sharedWithEmail) {
+            setSharedDocenteEmail(fullDataset.proyecto.sharedWithEmail);
+          }
+          setLastSyncTime(new Date());
+          setSyncStatus('synced');
+        } else {
+          setSyncStatus('synced');
+        }
+      } else {
+        // El usuario no tiene proyectos en Firestore aún
+        // Si hay datos en localStorage, se preservan como borrador local
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      console.warn('Error al consultar proyectos en Firestore:', err);
+      setSyncStatus('offline');
+    } finally {
+      setIsProjectsListLoading(false);
+    }
+  };
+
   // 1. Monitoreo de autenticación Firebase Auth
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
       if (currentUser) {
-        setSyncStatus('synced');
-        setLastSyncTime(new Date());
+        await loadFirestoreProjects(currentUser);
       } else {
         setSyncStatus('local');
+        setUserProjectsList([]);
+        // Si se cierra sesión, restaurar desde localStorage como respaldo local
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            setProjectData(JSON.parse(stored));
+          }
+        } catch (e) {}
       }
     });
     return () => unsubscribe();
   }, []);
+
 
   // 2. Contador en vivo de segundos desde la última sincronización
   useEffect(() => {
@@ -248,6 +306,11 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setLastSyncTime(new Date());
         setSyncStatus('synced');
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        // Refrescar lista de proyectos disponibles
+        try {
+          const updatedList = await fetchUserProjectsList(user);
+          setUserProjectsList(updatedList);
+        } catch (e) {}
       } catch (err) {
         console.error('Error al guardar en Firestore:', err);
         setSyncStatus('offline');
@@ -258,6 +321,39 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setLastSyncTime(new Date());
       setSyncStatus('local');
     }
+  };
+
+  // Cambiar de proyecto activo cargando su dataset completo desde Firestore
+  const switchActiveProject = async (projectId: string) => {
+    if (!user) return;
+    setIsProjectsListLoading(true);
+    setSyncStatus('syncing');
+    try {
+      const fullDataset = await fetchFullProjectDataset(projectId);
+      if (fullDataset) {
+        setProjectData(fullDataset);
+        activeProjectIdRef.current = projectId;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(fullDataset));
+        } catch (e) {}
+        if (fullDataset.proyecto?.sharedWithEmail) {
+          setSharedDocenteEmail(fullDataset.proyecto.sharedWithEmail);
+        }
+        setLastSyncTime(new Date());
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      console.error('Error al cambiar de proyecto activo:', err);
+      setSyncStatus('offline');
+    } finally {
+      setIsProjectsListLoading(false);
+    }
+  };
+
+  // Refrescar manualmente la lista de proyectos en Firestore
+  const refreshUserProjects = async () => {
+    if (!user) return;
+    await loadFirestoreProjects(user);
   };
 
   const clearProjectData = () => {
@@ -514,6 +610,13 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         saveProjectData,
         clearProjectData,
         loadSampleImpulsaData,
+        historyList,
+        addHistoryEntry: async () => {},
+        restoreHistoryVersion: async () => {},
+        userProjectsList,
+        isProjectsListLoading,
+        switchActiveProject,
+        refreshUserProjects,
       }}
     >
       {children}

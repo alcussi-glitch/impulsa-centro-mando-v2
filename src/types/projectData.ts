@@ -308,3 +308,17 @@ export interface HistoryEntry {
   snapshotJson: string;
 }
 
+export interface UserProjectSummary {
+  id: string;
+  nombre: string;
+  updatedAt?: string;
+  semana_corte?: number;
+  moneda?: string;
+  presupuesto_autorizado?: number;
+  BAC?: number;
+  isShared?: boolean;
+  ownerEmail?: string;
+  ownerId?: string;
+}
+
+

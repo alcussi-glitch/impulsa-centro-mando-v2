@@ -33,6 +33,8 @@ export const Header: React.FC<HeaderProps> = ({
     isAuthLoading,
     syncSecondsAgo,
     syncStatus,
+    userProjectsList,
+    switchActiveProject,
   } = useProjectData();
 
   return (
@@ -49,9 +51,26 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2.5">
-          <span className="font-semibold text-sm sm:text-base text-[#0A2540] tracking-tight truncate max-w-[200px] md:max-w-xs lg:max-w-md">
-            {projectData?.proyecto?.nombre || 'IMPULSA — Sistema de información con IA'}
-          </span>
+          {user && userProjectsList.length > 1 ? (
+            <select
+              value={projectData?.proyecto?.id || ''}
+              onChange={(e) => switchActiveProject(e.target.value)}
+              className="font-semibold text-xs sm:text-sm text-[#0A2540] bg-[#F7FAFC] hover:bg-slate-100 border border-[#E2E8F0] rounded-lg px-2 py-1 max-w-[180px] sm:max-w-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#00D4B2]"
+              title="Cambiar proyecto activo en Cloud Firestore"
+              aria-label="Seleccionar proyecto activo de Cloud Firestore"
+            >
+              {userProjectsList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre} {p.isShared ? '(Revisor/Docente)' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-semibold text-sm sm:text-base text-[#0A2540] tracking-tight truncate max-w-[200px] md:max-w-xs lg:max-w-md">
+              {projectData?.proyecto?.nombre || 'IMPULSA — Sistema de información con IA'}
+            </span>
+          )}
+
 
           {/* Requisito 3: Tiempo real en la barra superior «Sincronizado · hace X s» */}
           <div className="flex items-center gap-1.5">
