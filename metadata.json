@@ -1,0 +1,6 @@
+{
+  "name": "Centro de Mando · IMPULSA",
+  "description": "Centro de Mando para la gestión integral de proyectos bajo el estándar PMBOK 8 (PMI, 2025) con control EVM, matriz de riesgos, actas y bitácora de IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,79 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Bloqueo global por defecto (Principio de Menor Privilegio)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(projectData) {
+      return isSignedIn() && projectData != null && ('ownerId' in projectData) && projectData.ownerId == request.auth.uid;
+    }
+
+    function isSharedReader(projectData) {
+      return isSignedIn() &&
+        projectData != null &&
+        request.auth.token.email != null &&
+        'sharedWithEmail' in projectData &&
+        projectData.sharedWithEmail is string &&
+        projectData.sharedWithEmail != '' &&
+        projectData.sharedWithEmail == request.auth.token.email;
+    }
+
+    // Reglas para la colección principal de Proyectos
+    match /proyectos/{projectId} {
+      // Lectura permitida si es el propietario o si fue compartido con el correo del docente
+      allow get: if isSignedIn() && (isOwner(resource.data) || isSharedReader(resource.data));
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isSharedReader(resource.data));
+
+      // Creación: solo usuarios autenticados asignándose a sí mismos como ownerId
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+
+      // Modificación: solo el propietario, sin alterar el ownerId original
+      allow update: if isSignedIn() &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == resource.data.ownerId;
+
+      // Eliminación: solo el propietario
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      // Subcolecciones (hojas PMBOK: actividades, avance_semanal, riesgos, cargas, alertas, bitacora_ia, etc.)
+      match /{subcollection}/{docId} {
+        // Master Gate: lectura para propietario o docente compartido
+        allow get, list: if isSignedIn() && (
+          (exists(/databases/$(database)/documents/proyectos/$(projectId)) &&
+           (isOwner(get(/databases/$(database)/documents/proyectos/$(projectId)).data) ||
+            isSharedReader(get(/databases/$(database)/documents/proyectos/$(projectId)).data))) ||
+          (resource.data != null && 'ownerId' in resource.data && resource.data.ownerId == request.auth.uid)
+        );
+
+        // Escritura (crear registros en subcolección):
+        // 1. Si el proyecto padre ya existe en Firestore y el usuario es el dueño
+        // 2. Si el proyecto padre se crea en el mismo batch (existsAfter / getAfter)
+        // 3. O si el documento de la subcolección lleva ownerId igual al usuario autenticado
+        allow create: if isSignedIn() && (
+          (exists(/databases/$(database)/documents/proyectos/$(projectId)) &&
+           isOwner(get(/databases/$(database)/documents/proyectos/$(projectId)).data)) ||
+          (existsAfter(/databases/$(database)/documents/proyectos/$(projectId)) &&
+           isOwner(getAfter(/databases/$(database)/documents/proyectos/$(projectId)).data)) ||
+          ('ownerId' in request.resource.data && request.resource.data.ownerId == request.auth.uid)
+        );
+
+        // Modificación y eliminación: solo el propietario
+        allow update, delete: if isSignedIn() && (
+          (exists(/databases/$(database)/documents/proyectos/$(projectId)) &&
+           isOwner(get(/databases/$(database)/documents/proyectos/$(projectId)).data)) ||
+          (existsAfter(/databases/$(database)/documents/proyectos/$(projectId)) &&
+           isOwner(getAfter(/databases/$(database)/documents/proyectos/$(projectId)).data)) ||
+          (resource.data != null && 'ownerId' in resource.data && resource.data.ownerId == request.auth.uid)
+        );
+      }
+    }
+  }
+}

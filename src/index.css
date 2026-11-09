@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --impulsa-primary: #0A2540;
+    --impulsa-accent: #00D4B2;
+    --impulsa-alert: #E01038;
+    --impulsa-ink: #2D3748;
+    --impulsa-tint: #F7FAFC;
+    --impulsa-line: #E2E8F0;
+  }
+
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    color: var(--impulsa-ink);
+    background-color: var(--impulsa-tint);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Montserrat', Arial, sans-serif;
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "Proyecto": {
+      "title": "Proyecto",
+      "description": "Documento raíz del proyecto PMBOK 8 gestionado en el Centro de Mando",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nombre": { "type": "string" },
+        "moneda": { "type": "string" },
+        "presupuesto_autorizado": { "type": "number" },
+        "BAC": { "type": "number" },
+        "reserva_contingencia": { "type": "number" },
+        "duracion_semanas": { "type": "number" },
+        "semana_corte": { "type": "number" },
+        "patrocinador": { "type": "string" },
+        "director_proyecto": { "type": "string" },
+        "fecha_inicio": { "type": "string" },
+        "fecha_fin_planificada": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "sharedWithEmail": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "nombre", "ownerId"]
+    },
+    "SubcoleccionDocumento": {
+      "title": "SubcoleccionDocumento",
+      "description": "Documento almacenado en cualquiera de las subcolecciones del proyecto (hojas PMBOK, cargas, alertas, plantillas, bitacora)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/proyectos/{projectId}": {
+      "schema": "Proyecto",
+      "description": "Proyectos registrados por los gestores"
+    },
+    "/proyectos/{projectId}/{subcollection}/{docId}": {
+      "schema": "SubcoleccionDocumento",
+      "description": "Subcolecciones asociadas al proyecto (actividades, avance_semanal, riesgos, bitacora_ia, cargas, etc.)"
+    }
+  }
+}
