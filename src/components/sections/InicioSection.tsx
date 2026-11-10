@@ -4,10 +4,16 @@
  */
 
 import React from 'react';
-import { LayoutDashboard, Download, Filter, Calendar, FolderGit2, AlertTriangle, Layers, Database } from 'lucide-react';
+import { LayoutDashboard, Download, Filter, Calendar, FolderGit2, AlertTriangle, Layers, Database, TrendingUp } from 'lucide-react';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { EmptyState } from '../common/EmptyState.tsx';
-import { EvmEnginePendingCard } from '../common/EvmEnginePendingCard.tsx';
+import {
+  calculateEvmMetrics,
+  formatCurrencyAmount,
+  formatIndexValue,
+  formatVarianceAmount,
+  formatWeeksAmount,
+} from '../../services/evmService.ts';
 
 interface SectionProps {
   cutoffWeek: number;
@@ -60,7 +66,8 @@ export const InicioSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateTo
   const p = projectData?.proyecto;
   const actividades = projectData?.actividades || [];
   const riesgos = projectData?.riesgos || [];
-  const totalBAC = actividades.reduce((acc, a) => acc + (Number(a.BAC) || 0), 0) || p?.BAC || 0;
+  const evm = calculateEvmMetrics(projectData, cutoffWeek);
+  const totalBAC = evm.bac;
 
   return (
     <div className="space-y-6">
@@ -123,18 +130,90 @@ export const InicioSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateTo
         </div>
       </div>
 
-      {/* Indicadores calculados EVM en estado de espera */}
-      <EvmEnginePendingCard
-        title="Tablero Ejecutivo de Desempeño EVM y Curva S"
-        description="Los gráficos interactivos de valor ganado, semáforos ejecutivos y proyecciones matemáticas se activarán con el motor analítico EVM."
-        pendingIndicators={[
-          'Curva S interactiva consolidada (PV vs. EV vs. AC)',
-          'Índices de desempeño en tiempo real: CPI (Costo) y SPI (Cronograma)',
-          'Variaciones consolidadas: CV (Variación Costo) y SV (Variación Cronograma)',
-          'Pronóstico EAC (Costo final proyectado) y VAC (Desviación final)',
-          'Semáforos de tolerancia definidos por la dirección del proyecto',
-        ]}
-      />
+      {/* Tablero Ejecutivo de Desempeño EVM (En vivo según PMBOK 8) */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-[#00D4B2]/15 text-[#0A2540] rounded-lg">
+              <TrendingUp className="w-5 h-5 text-[#00D4B2]" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
+                Salud del Proyecto y Gestión del Valor Ganado (EVM)
+              </h3>
+              <p className="text-xs text-[#718096]">
+                Evaluación en tiempo real a la Semana {cutoffWeek} de {evm.duracionSemanas}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-[#718096]">
+              BAC: <strong className="text-[#0A2540] font-mono">{formatCurrencyAmount(evm.bac, evm.currency)}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Indicadores ejecutivos */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">PV Planificado</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-[#0A2540] block mt-0.5">
+              {formatCurrencyAmount(evm.pv, evm.currency)}
+            </span>
+            <span className="text-[10px] text-slate-500">{((evm.pv / (evm.bac || 1)) * 100).toFixed(1)}% BAC</span>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">EV Ganado</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-emerald-800 block mt-0.5">
+              {formatCurrencyAmount(evm.ev, evm.currency)}
+            </span>
+            <span className="text-[10px] text-slate-500">{((evm.ev / (evm.bac || 1)) * 100).toFixed(1)}% BAC</span>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">AC Costo Real</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-[#0A2540] block mt-0.5">
+              {formatCurrencyAmount(evm.ac, evm.currency)}
+            </span>
+            <span className={`text-[10px] font-semibold ${evm.cv >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+              CV: {formatVarianceAmount(evm.cv, evm.currency)}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">CPI Costo</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-[#0A2540] block mt-0.5">
+              {formatIndexValue(evm.cpi)}
+            </span>
+            <span className={`inline-block px-1.5 py-0.2 text-[10px] rounded font-bold uppercase ${
+              evm.semaforoCpi === 'green' ? 'bg-emerald-100 text-emerald-800' : evm.semaforoCpi === 'yellow' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+            }`}>
+              {evm.cpi !== null && evm.cpi >= 1 ? 'Eficiente' : 'Sobrecosto'}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">SPI Cronograma</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-[#0A2540] block mt-0.5">
+              {formatIndexValue(evm.spi)}
+            </span>
+            <span className={`inline-block px-1.5 py-0.2 text-[10px] rounded font-bold uppercase ${
+              evm.semaforoSpi === 'green' ? 'bg-emerald-100 text-emerald-800' : evm.semaforoSpi === 'yellow' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+            }`}>
+              {evm.spi !== null && evm.spi >= 1 ? 'En fecha' : 'Atrasado'}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span className="text-[10px] text-[#718096] uppercase font-bold block">EAC Típico</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-[#0A2540] block mt-0.5">
+              {formatCurrencyAmount(evm.eacTipico, evm.currency)}
+            </span>
+            <span className="text-[10px] text-slate-500">Pronóstico final</span>
+          </div>
+        </div>
+      </div>
 
       {/* Vista previa de actividades cargadas */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">

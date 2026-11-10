@@ -19,6 +19,8 @@ export interface ProyectoInfo {
   umbral_critico_cpi?: number;
   umbral_alerta_spi?: number;
   umbral_critico_spi?: number;
+  riesgo_umbral_medio?: number;
+  riesgo_umbral_alto?: number;
   [key: string]: any;
 }
 
@@ -252,6 +254,7 @@ export interface ProjectDataset {
   actividades: ActividadItem[];
   hitos: HitoItem[];
   lineaBase_pv: LineaBasePVItem[];
+  lineabase_pv?: LineaBasePVItem[];
   avance_semanal: AvanceSemanalItem[];
   recursos: RecursoItem[];
   raci: RACIItem[];

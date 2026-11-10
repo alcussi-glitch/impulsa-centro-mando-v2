@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { ShieldAlert, Download, AlertTriangle, ShieldCheck, FileSpreadsheet, Layers, ShieldX } from 'lucide-react';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { EmptyState } from '../common/EmptyState.tsx';
-import { EvmEnginePendingCard } from '../common/EvmEnginePendingCard.tsx';
+import { RiesgosAnalyticsCard } from '../analytics/RiesgosAnalyticsCard.tsx';
 
 interface SectionProps {
   cutoffWeek: number;
@@ -17,7 +17,7 @@ interface SectionProps {
 type TabType = 'riesgos' | 'respuestas' | 'contingencia' | 'historial';
 
 export const RiesgosSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateToData }) => {
-  const { projectData } = useProjectData();
+  const { projectData, projectAnalytics } = useProjectData();
   const [activeTab, setActiveTab] = useState<TabType>('riesgos');
 
   const riesgos = projectData?.riesgos || [];
@@ -98,18 +98,8 @@ export const RiesgosSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateT
         </div>
       </div>
 
-      {/* Indicadores dependientes del motor EVM en estado de espera */}
-      <EvmEnginePendingCard
-        title="Matriz de Calor 5×5 y Evaluación Analítica de Severidad"
-        description="Los indicadores calculados de incertidumbre se activarán con el motor analítico EVM."
-        pendingIndicators={[
-          'Matriz de calor 5×5 interactiva (Probabilidad 1-5 × Impacto 1-5)',
-          'Puntaje de severidad ponderada y semáforos de criticidad (Bajo, Medio, Alto, Crítico)',
-          'Consumo analítico de la reserva de contingencia (Saldo disponible vs. ejecutado)',
-          'Índice de exposición monetaria esperada (EMV = Probabilidad × Impacto)',
-          'Evaluación frente a umbrales de tolerancia de la organización',
-        ]}
-      />
+      {/* Analítica cuantitativa en tiempo real de riesgos */}
+      <RiesgosAnalyticsCard analytics={projectAnalytics.riesgos} cutoffWeek={cutoffWeek} />
 
       {/* Pestañas de subcolecciones de riesgos */}
       <div className="flex flex-wrap gap-2 border-b border-[#E2E8F0] pb-2">

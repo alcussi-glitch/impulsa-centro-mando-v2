@@ -20,3 +20,29 @@
     font-family: 'Montserrat', Arial, sans-serif;
   }
 }
+
+@media print {
+  /* Ocultar elementos de navegación y decorativos en PDF */
+  aside, header, footer, .no-print, button:not(.print-include) {
+    display: none !important;
+  }
+
+  body, #contenido-principal, main {
+    background: #FFFFFF !important;
+    color: #0A2540 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .print-break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .shadow-xs, .shadow-sm, .shadow-md, .shadow-lg {
+    box-shadow: none !important;
+    border: 1px solid #CBD5E1 !important;
+  }
+}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase.ts';
 import {
@@ -17,9 +17,12 @@ import {
   fetchUserProjectsList,
 } from '../services/firestoreService.ts';
 import { ProjectDataset, HistoryEntry, UserProjectSummary } from '../types/projectData.ts';
+import { ALBA_SAMPLE_DATASET } from '../services/albaSampleDataset.ts';
+import { calculateAllProjectAnalytics, AllProjectAnalytics } from '../services/projectAnalyticsService.ts';
 
 interface ProjectDataContextType {
   projectData: ProjectDataset | null;
+  projectAnalytics: AllProjectAnalytics;
   isDataLoaded: boolean;
   user: User | null;
   isAuthLoading: boolean;
@@ -35,6 +38,7 @@ interface ProjectDataContextType {
   saveProjectData: (data: ProjectDataset, historyMeta?: { tipo?: 'carga_excel' | 'edicion_hoja' | 'registro_avance' | 'restauracion'; hoja?: string; descripcion?: string }) => Promise<void>;
   clearProjectData: () => void;
   loadSampleImpulsaData: () => void;
+  loadAlbaCaseStudy: () => void;
   historyList: HistoryEntry[];
   addHistoryEntry: (entry: Omit<HistoryEntry, 'id' | 'fecha'>) => Promise<void>;
   restoreHistoryVersion: (entry: HistoryEntry) => Promise<void>;
@@ -90,11 +94,26 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (fullDataset.proyecto?.sharedWithEmail) {
             setSharedDocenteEmail(fullDataset.proyecto.sharedWithEmail);
           }
+
+          // Cargar historial de auditoría y versiones desde Firestore
+          try {
+            const history = await fetchProjectHistory(targetSummary.id);
+            if (history && history.length > 0) {
+              setHistoryList(history);
+              try {
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, 30)));
+              } catch (e) {}
+            }
+          } catch (hErr) {
+            console.warn('No se pudo recuperar historial de Firestore:', hErr);
+          }
+
           setLastSyncTime(new Date());
           setSyncStatus('synced');
         } else {
           setSyncStatus('synced');
         }
+
       } else {
         // El usuario no tiene proyectos en Firestore aún
         // Si hay datos en localStorage, se preservan como borrador local
@@ -148,6 +167,13 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
+        if (parsed) {
+          if (!parsed.lineaBase_pv && parsed.lineabase_pv) {
+            parsed.lineaBase_pv = parsed.lineabase_pv;
+          } else if (!parsed.lineabase_pv && parsed.lineaBase_pv) {
+            parsed.lineabase_pv = parsed.lineaBase_pv;
+          }
+        }
         setProjectData(parsed);
         if (parsed?.proyecto?.id) {
           activeProjectIdRef.current = parsed.proyecto.id;
@@ -160,10 +186,15 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (storedDocente) {
         setSharedDocenteEmail(storedDocente);
       }
+      const storedHistory = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (storedHistory) {
+        setHistoryList(JSON.parse(storedHistory));
+      }
     } catch (e) {
       console.warn('No se pudo recuperar datos previos de localStorage:', e);
     }
   }, []);
+
 
   // 4. Suscripción en tiempo real (onSnapshot) al proyecto activo en Firestore (Requisito 3)
   useEffect(() => {
@@ -283,14 +314,56 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // Guardar datos con sincronización automática en Firestore y localStorage
-  const saveProjectData = async (data: ProjectDataset) => {
+  // Guardar datos con sincronización automática en Firestore y localStorage y registro en historial
+  const saveProjectData = async (
+    data: ProjectDataset,
+    historyMeta?: {
+      tipo?: 'carga_excel' | 'edicion_hoja' | 'registro_avance' | 'restauracion';
+      hoja?: string;
+      descripcion?: string;
+    }
+  ) => {
+    // Sincronizar compatibilidad de nombres para línea base
+    if (!data.lineaBase_pv && (data as any).lineabase_pv) {
+      data.lineaBase_pv = (data as any).lineabase_pv;
+    } else if (!(data as any).lineabase_pv && data.lineaBase_pv) {
+      (data as any).lineabase_pv = data.lineaBase_pv;
+    }
+
     setProjectData(data);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
       console.error('Error al persistir en localStorage:', e);
     }
+
+    // Calcular total de filas en el dataset
+    const totalFilas = Object.values(data).reduce(
+      (acc: number, curr: any) => (Array.isArray(curr) ? acc + curr.length : acc),
+      0
+    );
+
+    const historyEntry: HistoryEntry = {
+      id: `hist_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fecha: new Date().toISOString(),
+      usuario: user?.displayName || user?.email || 'Gestor local',
+      tipo: historyMeta?.tipo || 'carga_excel',
+      hoja: historyMeta?.hoja || data.metadataCarga?.nombreArchivo || 'Carga completa .xlsx',
+      filasTotales: totalFilas,
+      descripcion:
+        historyMeta?.descripcion ||
+        `Operación en ${data.metadataCarga?.nombreArchivo || 'proyecto'} (${totalFilas} registros)`,
+      snapshotJson: JSON.stringify(data),
+    };
+
+    // Actualizar historial local inmediatamente
+    setHistoryList((prev) => {
+      const updated = [historyEntry, ...prev.filter((e) => e.id !== historyEntry.id)];
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated.slice(0, 30)));
+      } catch (e) {}
+      return updated;
+    });
 
     // Si el usuario está autenticado, sincronizar en Firestore bajo la jerarquía completa
     if (user) {
@@ -303,9 +376,18 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         data.proyecto.ownerEmail = user.email || '';
         data.proyecto.sharedWithEmail = sharedDocenteEmail;
         activeProjectIdRef.current = assignedProjectId;
+
+        // Registrar la entrada de historial en Firestore
+        try {
+          await saveHistoryEntryToFirestore(assignedProjectId, historyEntry, user);
+        } catch (hErr) {
+          console.warn('No se pudo guardar entrada en historial de Firestore:', hErr);
+        }
+
         setLastSyncTime(new Date());
         setSyncStatus('synced');
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
         // Refrescar lista de proyectos disponibles
         try {
           const updatedList = await fetchUserProjectsList(user);
@@ -320,6 +402,43 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } else {
       setLastSyncTime(new Date());
       setSyncStatus('local');
+    }
+  };
+
+  // Restaurar versión anterior desde el historial
+  const restoreHistoryVersion = async (entry: HistoryEntry) => {
+    if (!entry.snapshotJson) {
+      throw new Error('La versión seleccionada no cuenta con una copia de respaldo completa.');
+    }
+    const parsed: ProjectDataset = JSON.parse(entry.snapshotJson);
+    await saveProjectData(parsed, {
+      tipo: 'restauracion',
+      hoja: entry.hoja,
+      descripcion: `Restauración a la versión del ${new Date(entry.fecha).toLocaleString('es-PE')} (${entry.descripcion})`,
+    });
+  };
+
+  // Agregar entrada manual al historial
+  const addHistoryEntry = async (entry: Omit<HistoryEntry, 'id' | 'fecha'>) => {
+    const fullEntry: HistoryEntry = {
+      ...entry,
+      id: `hist_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fecha: new Date().toISOString(),
+    };
+    setHistoryList((prev) => {
+      const updated = [fullEntry, ...prev];
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated.slice(0, 30)));
+      } catch (e) {}
+      return updated;
+    });
+
+    if (user && activeProjectIdRef.current) {
+      try {
+        await saveHistoryEntryToFirestore(activeProjectIdRef.current, fullEntry, user);
+      } catch (err) {
+        console.warn('No se pudo guardar entrada de historial en Firestore:', err);
+      }
     }
   };
 
@@ -339,6 +458,18 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (fullDataset.proyecto?.sharedWithEmail) {
           setSharedDocenteEmail(fullDataset.proyecto.sharedWithEmail);
         }
+
+        // Cargar historial del proyecto seleccionado
+        try {
+          const history = await fetchProjectHistory(projectId);
+          if (history && history.length > 0) {
+            setHistoryList(history);
+            try {
+              localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, 30)));
+            } catch (e) {}
+          }
+        } catch (hErr) {}
+
         setLastSyncTime(new Date());
         setSyncStatus('synced');
       }
@@ -349,6 +480,7 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsProjectsListLoading(false);
     }
   };
+
 
   // Refrescar manualmente la lista de proyectos en Firestore
   const refreshUserProjects = async () => {
@@ -591,10 +723,26 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     saveProjectData(sample);
   };
 
+  // Carga del caso de estudio de referencia ALBA (calibrado para pruebas EVM PMBOK 8 a Semana 6)
+  const loadAlbaCaseStudy = () => {
+    saveProjectData(ALBA_SAMPLE_DATASET, {
+      tipo: 'carga_excel',
+      hoja: 'Proyecto_ALBA',
+      descripcion: 'Carga del caso oficial de referencia ALBA (EVM PMBOK 8 / S6)',
+    });
+  };
+
+  // Recalcular métricas analíticas de los 5 dominios en tiempo real
+  const projectAnalytics = useMemo(() => {
+    const cutoff = Number(projectData?.proyecto?.semana_corte) || 6;
+    return calculateAllProjectAnalytics(projectData, cutoff);
+  }, [projectData, projectData?.proyecto?.semana_corte]);
+
   return (
     <ProjectDataContext.Provider
       value={{
         projectData,
+        projectAnalytics,
         isDataLoaded: !!projectData,
         user,
         isAuthLoading,
@@ -610,9 +758,10 @@ export const ProjectDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         saveProjectData,
         clearProjectData,
         loadSampleImpulsaData,
+        loadAlbaCaseStudy,
         historyList,
-        addHistoryEntry: async () => {},
-        restoreHistoryVersion: async () => {},
+        addHistoryEntry,
+        restoreHistoryVersion,
         userProjectsList,
         isProjectsListLoading,
         switchActiveProject,

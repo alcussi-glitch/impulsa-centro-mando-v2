@@ -255,6 +255,10 @@ function parseProyectoSheet(sheet: XLSX.WorkSheet): ProyectoInfo | null {
       info.umbral_alerta_spi = parseFormattedNumber(valor);
     } else if (campo.includes('umbral_critico_spi')) {
       info.umbral_critico_spi = parseFormattedNumber(valor);
+    } else if (campo.includes('riesgo_umbral_medio') || campo.includes('umbral_medio_riesgo')) {
+      info.riesgo_umbral_medio = Math.round(parseFormattedNumber(valor)) || 8;
+    } else if (campo.includes('riesgo_umbral_alto') || campo.includes('umbral_alto_riesgo')) {
+      info.riesgo_umbral_alto = Math.round(parseFormattedNumber(valor)) || 15;
     }
   }
 
@@ -267,6 +271,8 @@ function parseProyectoSheet(sheet: XLSX.WorkSheet): ProyectoInfo | null {
     reserva_contingencia: info.reserva_contingencia || 80000,
     duracion_semanas: info.duracion_semanas || 12,
     semana_corte: info.semana_corte || 6,
+    riesgo_umbral_medio: info.riesgo_umbral_medio || 8,
+    riesgo_umbral_alto: info.riesgo_umbral_alto || 15,
     patrocinador: info.patrocinador || 'MTPE / Alianza Tech Perú',
     director_proyecto: info.director_proyecto || 'Ing. Carlos Mendoza (PMP®)',
     fecha_inicio: info.fecha_inicio || '2024-04-08',
@@ -411,12 +417,25 @@ export function parseAndValidateWorkbook(
       if (cleaned.probabilidad_1a5 !== undefined) cleaned.probabilidad_1a5 = Number(cleaned.probabilidad_1a5);
       if (cleaned.impacto_1a5 !== undefined) cleaned.impacto_1a5 = Number(cleaned.impacto_1a5);
 
-      // S1 a S12
-      for (let s = 1; s <= 12; s++) {
-        const sKey = `s${s}`;
-        const upperS = `S${s}`;
-        if (cleaned[sKey] !== undefined || cleaned[upperS] !== undefined) {
-          cleaned[upperS] = parseFormattedNumber(cleaned[sKey] !== undefined ? cleaned[sKey] : cleaned[upperS]);
+      // S1 a S12 para LineaBase_PV y otras hojas con columnas semanales
+      if (sheetKey === 'LineaBase_PV' || keyLower === 'lineabase_pv') {
+        let rowSum = 0;
+        for (let s = 1; s <= 12; s++) {
+          const sKey = `s${s}`;
+          const upperS = `S${s}`;
+          const raw = cleaned[upperS] !== undefined ? cleaned[upperS] : cleaned[sKey];
+          const valNum = raw !== undefined && raw !== null && raw !== '' ? parseFormattedNumber(raw) : 0;
+          cleaned[upperS] = valNum;
+          rowSum += valNum;
+        }
+        cleaned.total_pv = rowSum;
+      } else {
+        for (let s = 1; s <= 12; s++) {
+          const sKey = `s${s}`;
+          const upperS = `S${s}`;
+          if (cleaned[sKey] !== undefined || cleaned[upperS] !== undefined) {
+            cleaned[upperS] = parseFormattedNumber(cleaned[sKey] !== undefined ? cleaned[sKey] : cleaned[upperS]);
+          }
         }
       }
 
@@ -424,6 +443,10 @@ export function parseAndValidateWorkbook(
     });
 
     parsedData[keyLower] = cleanedRows;
+    if (sheetKey === 'LineaBase_PV' || keyLower === 'lineabase_pv') {
+      parsedData.lineaBase_pv = cleanedRows;
+      parsedData.lineabase_pv = cleanedRows;
+    }
     results.push({
       sheetName: sheetKey,
       rowsCount: cleanedRows.length,
@@ -1335,7 +1358,7 @@ export async function exportProjectToExcel(dataset: ProjectDataset, customName?:
     EDT: dataset.edt || [],
     Actividades: dataset.actividades || [],
     Hitos: dataset.hitos || [],
-    LineaBase_PV: dataset.lineaBase_pv || [],
+    LineaBase_PV: dataset.lineaBase_pv || (dataset as any).lineabase_pv || [],
     Avance_Semanal: dataset.avance_semanal || [],
     Recursos: dataset.recursos || [],
     RACI: dataset.raci || [],

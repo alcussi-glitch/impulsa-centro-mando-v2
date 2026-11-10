@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase.ts';
-import { ProjectDataset, HistoryEntry, UserProjectSummary } from '../types/projectData.ts';
+import { ProjectDataset, HistoryEntry, UserProjectSummary, LineaBasePVItem, AvanceSemanalItem } from '../types/projectData.ts';
 
 // Guardar proyecto completo en Firestore con la jerarquía: proyectos/{projectId}/{subcollection}/{docId}
 export async function saveProjectToFirestore(
@@ -55,7 +55,33 @@ export async function saveProjectToFirestore(
   try {
     const subcollectionsMap: Record<string, any[]> = {
       actividades: dataset.actividades || [],
-      avance_semanal: dataset.avance_semanal || [],
+      avance_semanal: (dataset.avance_semanal || []).map((item: any) => {
+        const rawCost =
+          item.costo_real_semana !== undefined
+            ? item.costo_real_semana
+            : item.costo_real !== undefined
+            ? item.costo_real
+            : item.costo_real_semana_pen !== undefined
+            ? item.costo_real_semana_pen
+            : item.costo_real_semana_mxn !== undefined
+            ? item.costo_real_semana_mxn
+            : item.monto !== undefined
+            ? item.monto
+            : item.costo || 0;
+        const numCost = typeof rawCost === 'number' ? (isNaN(rawCost) ? 0 : rawCost) : (Number(rawCost) || 0);
+        const rawSem = item.semana !== undefined ? item.semana : 1;
+        const numSem = typeof rawSem === 'number' ? (isNaN(rawSem) ? 1 : Math.round(rawSem)) : (parseInt(String(rawSem).replace(/\D/g, ''), 10) || 1);
+        const rawPct = item.pct_completado_acum !== undefined ? item.pct_completado_acum : (item.pct || 0);
+        const numPct = typeof rawPct === 'number' ? rawPct : (Number(rawPct) || 0);
+
+        return {
+          ...item,
+          semana: numSem,
+          codigo: String(item.codigo || item.codigo_actividad || '').trim(),
+          pct_completado_acum: numPct,
+          costo_real_semana: numCost,
+        };
+      }),
       riesgos: dataset.riesgos || [],
       objetivos: dataset.objetivos || [],
       supuestos: dataset.supuestos || [],
@@ -63,9 +89,23 @@ export async function saveProjectToFirestore(
       requisitos: dataset.requisitos || [],
       entregables: dataset.entregables || [],
       edt: dataset.edt || [],
-      hitos: dataset.hitos || [],
-      lineabase_pv: dataset.lineaBase_pv || [],
-      recursos: dataset.recursos || [],
+      lineabase_pv: ((dataset.lineaBase_pv && dataset.lineaBase_pv.length > 0)
+        ? dataset.lineaBase_pv
+        : ((dataset as any).lineabase_pv || [])
+      ).map((item: any) => {
+        const sanitized: Record<string, any> = { ...item };
+        let sumS = 0;
+        for (let s = 1; s <= 12; s++) {
+          const upperKey = `S${s}`;
+          const lowerKey = `s${s}`;
+          const raw = sanitized[upperKey] !== undefined ? sanitized[upperKey] : sanitized[lowerKey];
+          const numVal = typeof raw === 'number' ? raw : (Number(raw) || 0);
+          sanitized[upperKey] = numVal;
+          sumS += numVal;
+        }
+        sanitized.total_pv = sumS;
+        return sanitized;
+      }),
       raci: dataset.raci || [],
       costos: dataset.costos || [],
       riesgos_historial: dataset.riesgos_historial || [],
@@ -112,10 +152,26 @@ export async function saveProjectToFirestore(
       },
     });
 
-    // Subcolecciones por hoja del PMBOK
+    // Subcolecciones por hoja del PMBOK con ID único compuesto para evitar sobreescrituras
     for (const [subName, items] of Object.entries(subcollectionsMap)) {
       items.forEach((item, index) => {
-        const rawId = item.id || item.codigo || item.codigo_actividad || `item_${index + 1}`;
+        let rawId: any;
+        if (subName === 'avance_semanal') {
+          // Clave compuesta actividad + semana para que las semanas no se sobreescriban
+          const sem = item.semana !== undefined ? item.semana : index + 1;
+          const cod = item.codigo || item.codigo_actividad || 'act';
+          rawId = item.id || `${cod}_s${sem}`;
+        } else if (subName === 'riesgos_historial') {
+          const sem = item.semana !== undefined ? item.semana : index + 1;
+          const rId = item.id || item.id_riesgo || 'rsk';
+          rawId = item.id_doc || `${rId}_s${sem}`;
+        } else if (subName === 'raci') {
+          const cod = item.codigo_actividad || item.codigo || 'act';
+          const rol = String(item.persona_o_rol || item.raci || index + 1).replace(/\s+/g, '_');
+          rawId = item.id || `${cod}_${rol}`;
+        } else {
+          rawId = item.id || item.codigo || item.codigo_actividad || `item_${index + 1}`;
+        }
         const docId = String(rawId).replace(/[/#?.]/g, '_');
         operations.push({
           ref: doc(db, 'proyectos', projectId, subName, docId),
@@ -354,6 +410,98 @@ export async function fetchFullProjectDataset(projectId: string): Promise<Projec
       })
     );
 
+    // Comprobación de respaldo para subcolección de línea base (casing 'lineabase_pv' vs 'lineaBase_pv')
+    let lbDocs = results.lineabase_pv || [];
+    if (!lbDocs || lbDocs.length === 0) {
+      try {
+        const snapAlt = await getDocs(collection(db, 'proyectos', projectId, 'lineaBase_pv'));
+        if (!snapAlt.empty) {
+          lbDocs = snapAlt.docs.map((d) => d.data());
+        }
+      } catch (e) {}
+    }
+
+    // Sanitización obligatoria: asegurar que S1 a S12 son estrictamente valores numéricos
+    const sanitizedLbDocs: LineaBasePVItem[] = (lbDocs || []).map((item: any) => {
+      const row: any = { ...item };
+      let sumS = 0;
+      for (let s = 1; s <= 12; s++) {
+        const upper = `S${s}`;
+        const lower = `s${s}`;
+        const raw = row[upper] !== undefined ? row[upper] : row[lower];
+        const num = typeof raw === 'number' ? raw : (Number(raw) || 0);
+        row[upper] = num;
+        sumS += num;
+      }
+      row.total_pv = sumS;
+      return row as LineaBasePVItem;
+    });
+
+    // Sanitización y recuperación de avance_semanal
+    let rawAvanceDocs: any[] = results.avance_semanal || [];
+
+    // Si los registros de avance_semanal están incompletos (por ejemplo, si sufrieron la sobreescritura previa por clave simple),
+    // inspeccionar el historial en 'cargas' para recuperar el snapshot original completo del Excel
+    try {
+      const snapCargas = await getDocs(collection(db, 'proyectos', projectId, 'cargas'));
+      if (!snapCargas.empty) {
+        let bestSnapshotAvance: any = null;
+        let latestTime = 0;
+        snapCargas.forEach((d) => {
+          const cData = d.data();
+          if (cData.snapshotJson) {
+            const time = new Date(cData.fecha || 0).getTime();
+            if (time >= latestTime) {
+              latestTime = time;
+              try {
+                const parsed = JSON.parse(cData.snapshotJson);
+                if (parsed?.avance_semanal && Array.isArray(parsed.avance_semanal)) {
+                  if (!bestSnapshotAvance || parsed.avance_semanal.length > bestSnapshotAvance.length) {
+                    bestSnapshotAvance = parsed.avance_semanal;
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+        });
+        if (bestSnapshotAvance && bestSnapshotAvance.length > rawAvanceDocs.length) {
+          rawAvanceDocs = bestSnapshotAvance;
+        }
+      }
+    } catch (snapErr) {
+      console.warn('Verificación de snapshot de cargas para avance_semanal:', snapErr);
+    }
+
+    // Sanitización numérica estricta para avance_semanal
+    const sanitizedAvanceDocs: AvanceSemanalItem[] = rawAvanceDocs.map((item: any) => {
+      const rawCost =
+        item.costo_real_semana !== undefined
+          ? item.costo_real_semana
+          : item.costo_real !== undefined
+          ? item.costo_real
+          : item.costo_real_semana_pen !== undefined
+          ? item.costo_real_semana_pen
+          : item.costo_real_semana_mxn !== undefined
+          ? item.costo_real_semana_mxn
+          : item.monto !== undefined
+          ? item.monto
+          : item.costo || 0;
+
+      const numCost = typeof rawCost === 'number' ? (isNaN(rawCost) ? 0 : rawCost) : (Number(rawCost) || 0);
+      const rawSem = item.semana !== undefined ? item.semana : 1;
+      const numSem = typeof rawSem === 'number' ? (isNaN(rawSem) ? 1 : Math.round(rawSem)) : (parseInt(String(rawSem).replace(/\D/g, ''), 10) || 1);
+      const rawPct = item.pct_completado_acum !== undefined ? item.pct_completado_acum : (item.pct || 0);
+      const numPct = typeof rawPct === 'number' ? rawPct : (Number(rawPct) || 0);
+
+      return {
+        ...item,
+        semana: numSem,
+        codigo: String(item.codigo || item.codigo_actividad || '').trim(),
+        pct_completado_acum: numPct,
+        costo_real_semana: numCost,
+      };
+    });
+
     return {
       proyecto: {
         id: projectId,
@@ -373,7 +521,7 @@ export async function fetchFullProjectDataset(projectId: string): Promise<Projec
         ownerEmail: rootData.ownerEmail,
       },
       actividades: results.actividades || [],
-      avance_semanal: results.avance_semanal || [],
+      avance_semanal: sanitizedAvanceDocs,
       riesgos: results.riesgos || [],
       objetivos: results.objetivos || [],
       supuestos: results.supuestos || [],
@@ -382,7 +530,8 @@ export async function fetchFullProjectDataset(projectId: string): Promise<Projec
       entregables: results.entregables || [],
       edt: results.edt || [],
       hitos: results.hitos || [],
-      lineaBase_pv: results.lineabase_pv || [],
+      lineaBase_pv: sanitizedLbDocs,
+      lineabase_pv: sanitizedLbDocs,
       recursos: results.recursos || [],
       raci: results.raci || [],
       costos: results.costos || [],

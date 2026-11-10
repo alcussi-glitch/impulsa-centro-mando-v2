@@ -7,18 +7,19 @@ import React, { useState } from 'react';
 import { Share2, Download, MessageSquare, Users, GitPullRequest, BookOpen, Send } from 'lucide-react';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { EmptyState } from '../common/EmptyState.tsx';
-import { EvmEnginePendingCard } from '../common/EvmEnginePendingCard.tsx';
+import { InteresadosAnalyticsCard } from '../analytics/InteresadosAnalyticsCard.tsx';
+import { ComunicacionesAnalyticsCard } from '../analytics/ComunicacionesAnalyticsCard.tsx';
 
 interface SectionProps {
   cutoffWeek: number;
   onNavigateToData: () => void;
 }
 
-type TabType = 'plan' | 'emitidas' | 'interesados' | 'cambios' | 'lecciones';
+type TabType = 'interesados' | 'plan' | 'emitidas' | 'cambios' | 'lecciones';
 
 export const IntegracionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateToData }) => {
-  const { projectData } = useProjectData();
-  const [activeTab, setActiveTab] = useState<TabType>('plan');
+  const { projectData, projectAnalytics } = useProjectData();
+  const [activeTab, setActiveTab] = useState<TabType>('interesados');
 
   const plan = projectData?.plan_comunicaciones || [];
   const emitidas = projectData?.comunicaciones || [];
@@ -98,18 +99,7 @@ export const IntegracionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavig
         </div>
       </div>
 
-      {/* Indicadores en espera de EVM */}
-      <EvmEnginePendingCard
-        title="Gobernanza y Eficacia de la Comunicación"
-        description="Los indicadores de cumplimiento de difusión e impacto de cambios se activarán con el motor analítico."
-        pendingIndicators={[
-          'Tasa de efectividad de comunicaciones ejecutadas a tiempo vs. planificadas',
-          'Matriz interactiva de Poder (1-5) vs. Interés (1-5) con cuadrantes de gestión estratégica',
-          'Tasa de aprobación y tiempo medio de resolución de Solicitudes de Cambio (CR)',
-          'Análisis de impacto presupuestal de los cambios aprobados frente a la línea base BAC',
-          'Clasificación y aprendizaje acumulado en el repositorio de Lecciones Aprendidas',
-        ]}
-      />
+
 
       {/* Pestañas de subcolecciones */}
       <div className="flex flex-wrap gap-2 border-b border-[#E2E8F0] pb-2">
@@ -181,97 +171,108 @@ export const IntegracionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavig
 
       {/* Tabla Plan de Comunicaciones */}
       {activeTab === 'plan' && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
-            <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
-              Tabla de datos crudos · Hoja «Plan_Comunicaciones»
-            </h2>
-            <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
-              {plan.length} canales
-            </span>
-          </div>
+        <div className="space-y-6">
+          <ComunicacionesAnalyticsCard analytics={projectAnalytics.comunicaciones} cutoffWeek={cutoffWeek} />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#0A2540] text-white font-semibold">
-                <tr>
-                  <th scope="col" className="py-3 px-4">Audiencia objetivo</th>
-                  <th scope="col" className="py-3 px-4">Información requerida</th>
-                  <th scope="col" className="py-3 px-4">Frecuencia</th>
-                  <th scope="col" className="py-3 px-4">Canal</th>
-                  <th scope="col" className="py-3 px-4">Responsable de emisión</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-[#2D3748]">
-                {plan.map((p, idx) => (
-                  <tr key={idx} className="hover:bg-[#F7FAFC] transition-colors">
-                    <td className="py-3 px-4 font-bold text-[#0A2540] whitespace-nowrap">{p.audiencia || 'Sin datos'}</td>
-                    <td className="py-3 px-4 font-medium max-w-sm">{p.informacion_requerida || 'Sin datos'}</td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
-                        {p.frecuencia || 'Sin datos'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-[#718096]">{p.canal || 'Sin datos'}</td>
-                    <td className="py-3 px-4 whitespace-nowrap text-[#718096]">{p.responsable_emitir || 'Sin datos'}</td>
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
+              <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
+                Tabla de datos crudos · Hoja «Plan_Comunicaciones»
+              </h2>
+              <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
+                {plan.length} canales
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-[#0A2540] text-white font-semibold">
+                  <tr>
+                    <th scope="col" className="py-3 px-4">Audiencia objetivo</th>
+                    <th scope="col" className="py-3 px-4">Información requerida</th>
+                    <th scope="col" className="py-3 px-4">Frecuencia</th>
+                    <th scope="col" className="py-3 px-4">Canal</th>
+                    <th scope="col" className="py-3 px-4">Responsable de emisión</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0] text-[#2D3748]">
+                  {plan.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-[#F7FAFC] transition-colors">
+                      <td className="py-3 px-4 font-bold text-[#0A2540] whitespace-nowrap">{p.audiencia || 'Sin datos'}</td>
+                      <td className="py-3 px-4 font-medium max-w-sm">{p.informacion_requerida || 'Sin datos'}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                          {p.frecuencia || 'Sin datos'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap text-[#718096]">{p.canal || 'Sin datos'}</td>
+                      <td className="py-3 px-4 whitespace-nowrap text-[#718096]">{p.responsable_emitir || 'Sin datos'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* Tabla Comunicaciones Emitidas */}
       {activeTab === 'emitidas' && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
-            <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
-              Tabla de datos crudos · Hoja «Comunicaciones» (Eventos emitidos)
-            </h2>
-            <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
-              {emitidas.length} emitidas
-            </span>
-          </div>
+        <div className="space-y-6">
+          <ComunicacionesAnalyticsCard analytics={projectAnalytics.comunicaciones} cutoffWeek={cutoffWeek} />
 
-          {emitidas.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#718096]">No hay eventos de comunicación emitidos registrados aún.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-[#0A2540] text-white font-semibold">
-                  <tr>
-                    <th scope="col" className="py-3 px-4">Semana</th>
-                    <th scope="col" className="py-3 px-4">Comunicación / Reporte emitido</th>
-                    <th scope="col" className="py-3 px-4">Audiencia receptora</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E2E8F0] text-[#2D3748]">
-                  {emitidas.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-[#F7FAFC] transition-colors">
-                      <td className="py-3 px-4 font-bold text-center">Semana {c.semana ?? 'Sin datos'}</td>
-                      <td className="py-3 px-4 font-medium">{c.comunicacion || 'Sin datos'}</td>
-                      <td className="py-3 px-4 text-[#718096]">{c.audiencia || 'Sin datos'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
+              <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
+                Tabla de datos crudos · Hoja «Comunicaciones» (Eventos emitidos)
+              </h2>
+              <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
+                {emitidas.length} emitidas
+              </span>
             </div>
-          )}
+
+            {emitidas.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#718096]">No hay eventos de comunicación emitidos registrados aún.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-[#0A2540] text-white font-semibold">
+                    <tr>
+                      <th scope="col" className="py-3 px-4">Semana</th>
+                      <th scope="col" className="py-3 px-4">Comunicación / Reporte emitido</th>
+                      <th scope="col" className="py-3 px-4">Audiencia receptora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0] text-[#2D3748]">
+                    {emitidas.map((c, idx) => (
+                      <tr key={idx} className="hover:bg-[#F7FAFC] transition-colors">
+                        <td className="py-3 px-4 font-bold text-center">Semana {c.semana ?? 'Sin datos'}</td>
+                        <td className="py-3 px-4 font-medium">{c.comunicacion || 'Sin datos'}</td>
+                        <td className="py-3 px-4 text-[#718096]">{c.audiencia || 'Sin datos'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Tabla Interesados */}
       {activeTab === 'interesados' && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
-            <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
-              Tabla de datos crudos · Hoja «Interesados»
-            </h2>
-            <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
-              {interesados.length} interesados
-            </span>
-          </div>
+        <div className="space-y-6">
+          <InteresadosAnalyticsCard analytics={projectAnalytics.interesados} />
+
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F7FAFC]">
+              <h2 className="text-sm font-bold text-[#0A2540] font-['Montserrat']">
+                Tabla de datos crudos · Hoja «Interesados»
+              </h2>
+              <span className="text-xs font-medium text-[#0A2540] bg-white px-2.5 py-1 rounded border border-[#E2E8F0]">
+                {interesados.length} interesados
+              </span>
+            </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -298,7 +299,8 @@ export const IntegracionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavig
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Tabla Cambios */}
       {activeTab === 'cambios' && (

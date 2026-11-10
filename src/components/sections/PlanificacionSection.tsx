@@ -4,26 +4,30 @@
  */
 
 import React, { useState } from 'react';
-import { CalendarDays, Download, GitBranch, CheckCircle2, ListTree, Milestone, BarChart3 } from 'lucide-react';
+import { CalendarDays, Download, GitBranch, CheckCircle2, ListTree, Milestone, BarChart3, Users, AlertOctagon } from 'lucide-react';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { EmptyState } from '../common/EmptyState.tsx';
 import { EvmEnginePendingCard } from '../common/EvmEnginePendingCard.tsx';
+import { LineaBasePVItem } from '../../types/projectData.ts';
+import { RecursosAnalyticsCard } from '../analytics/RecursosAnalyticsCard.tsx';
 
 interface SectionProps {
   cutoffWeek: number;
   onNavigateToData: () => void;
 }
 
-type TabType = 'actividades' | 'edt' | 'hitos' | 'lineabase';
+type TabType = 'actividades' | 'recursos' | 'edt' | 'hitos' | 'lineabase';
 
 export const PlanificacionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateToData }) => {
-  const { projectData } = useProjectData();
+  const { projectData, projectAnalytics } = useProjectData();
   const [activeTab, setActiveTab] = useState<TabType>('actividades');
 
   const actividades = projectData?.actividades || [];
   const edt = projectData?.edt || [];
   const hitos = projectData?.hitos || [];
-  const lineaBase = projectData?.lineaBase_pv || [];
+  const lineaBase: LineaBasePVItem[] = (projectData?.lineaBase_pv && projectData.lineaBase_pv.length > 0)
+    ? projectData.lineaBase_pv
+    : ((projectData as any)?.lineabase_pv || []);
 
   const tieneDatos = actividades.length > 0 || edt.length > 0 || hitos.length > 0;
 
@@ -129,6 +133,24 @@ export const PlanificacionSection: React.FC<SectionProps> = ({ cutoffWeek, onNav
 
         <button
           type="button"
+          onClick={() => setActiveTab('recursos')}
+          className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+            activeTab === 'recursos'
+              ? 'bg-[#0A2540] text-white shadow-xs'
+              : 'bg-white text-[#2D3748] border border-[#E2E8F0] hover:bg-[#F7FAFC]'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Carga de Recursos ({projectAnalytics.recursos.cargasPorPersona.length})</span>
+          {projectAnalytics.recursos.personasSobreasignadas.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[9px] font-bold">
+              {projectAnalytics.recursos.personasSobreasignadas.length} sobreasignados
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('edt')}
           className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
             activeTab === 'edt'
@@ -166,6 +188,11 @@ export const PlanificacionSection: React.FC<SectionProps> = ({ cutoffWeek, onNav
           <span>Línea Base PV por semana ({lineaBase.length})</span>
         </button>
       </div>
+
+      {/* Vista Analítica de Recursos */}
+      {activeTab === 'recursos' && (
+        <RecursosAnalyticsCard analytics={projectAnalytics.recursos} cutoffWeek={cutoffWeek} />
+      )}
 
       {/* Tabla Actividades */}
       {activeTab === 'actividades' && (

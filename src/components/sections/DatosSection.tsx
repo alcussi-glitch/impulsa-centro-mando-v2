@@ -21,10 +21,14 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Edit3,
+  History,
+  FileDown,
 } from 'lucide-react';
 import {
   parseAndValidateWorkbook,
   generateEmptyTemplate,
+  exportProjectToExcel,
 } from '../../services/excelService.ts';
 import {
   ValidationSummary,
@@ -34,10 +38,14 @@ import {
 } from '../../types/projectData.ts';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { ProyectoFormModal } from '../datos/ProyectoFormModal.tsx';
+import { FormularioAvanceSemanal } from '../datos/FormularioAvanceSemanal.tsx';
+import { TablaEditableHoja } from '../datos/TablaEditableHoja.tsx';
+import { HistorialTab } from '../datos/HistorialTab.tsx';
 
 interface DatosSectionProps {
   cutoffWeek: number;
 }
+
 
 export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
   const { projectData, isDataLoaded, user, saveProjectData, clearProjectData, loadSampleImpulsaData } = useProjectData();
@@ -52,6 +60,8 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
   const [customProyectoInfo, setCustomProyectoInfo] = useState<ProyectoInfo | null>(null);
   const [notificationMsg, setNotificationMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
+  const [activeTab, setActiveTab] = useState<'carga' | 'editar' | 'historial'>('carga');
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +79,33 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
       setIsGeneratingTemplate(false);
     }
   };
+
+  const handleExportExcel = async () => {
+    if (!projectData) {
+      setNotificationMsg({
+        type: 'error',
+        text: 'No hay datos cargados para exportar.',
+      });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await exportProjectToExcel(projectData);
+      setNotificationMsg({
+        type: 'success',
+        text: '¡Libro Excel exportado con éxito! Se descargó el archivo con la estructura completa de las 26 hojas del PMBOK.',
+      });
+    } catch (err: any) {
+      console.error('Error al exportar a Excel:', err);
+      setNotificationMsg({
+        type: 'error',
+        text: `Error al exportar el archivo Excel: ${err?.message || 'Error desconocido'}.`,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   // Procesar archivo ArrayBuffer
   const handleProcessFile = async (file: File) => {
@@ -136,6 +173,11 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
     if (!validationSummary || !validationSummary.parsedDataset) return;
 
     const dataset = validationSummary.parsedDataset;
+
+    // Asegurar sincronización de Línea Base PV
+    if (!dataset.lineaBase_pv && (dataset as any).lineabase_pv) {
+      dataset.lineaBase_pv = (dataset as any).lineabase_pv;
+    }
 
     // Si se capturó la hoja proyecto manualmente
     if (customProyectoInfo) {
@@ -219,22 +261,41 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
           </p>
         </div>
 
-        {/* Botón Descargar plantilla vacía estilizada con ExcelJS */}
-        <button
-          type="button"
-          disabled={isGeneratingTemplate}
-          onClick={handleDownloadTemplate}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-[#0A2540] bg-white border border-[#E2E8F0] hover:bg-[#F7FAFC] rounded-lg transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4B2] self-start md:self-auto disabled:opacity-60"
-          title="Descargar libro Excel estilizado con las 26 hojas, guía LEEME y columnas obligatorias en rojo"
-        >
-          {isGeneratingTemplate ? (
-            <RefreshCw className="w-4 h-4 text-[#00D4B2] animate-spin" aria-hidden="true" />
-          ) : (
-            <Download className="w-4 h-4 text-[#00D4B2]" aria-hidden="true" />
-          )}
-          <span>{isGeneratingTemplate ? 'Generando plantilla...' : 'Descargar plantilla vacía (.xlsx)'}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+          {/* Botón Exportar a Excel con datos actuales */}
+          <button
+            type="button"
+            disabled={!projectData || isExporting}
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-[#0A2540] hover:bg-[#0A2540]/90 rounded-lg transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4B2] disabled:opacity-50"
+            title="Descargar libro Excel completo con todos los datos y hojas actuales del proyecto"
+          >
+            {isExporting ? (
+              <RefreshCw className="w-4 h-4 text-[#00D4B2] animate-spin" aria-hidden="true" />
+            ) : (
+              <FileDown className="w-4 h-4 text-[#00D4B2]" aria-hidden="true" />
+            )}
+            <span>{isExporting ? 'Exportando datos...' : 'Exportar a Excel (.xlsx)'}</span>
+          </button>
+
+          {/* Botón Descargar plantilla vacía estilizada con ExcelJS */}
+          <button
+            type="button"
+            disabled={isGeneratingTemplate}
+            onClick={handleDownloadTemplate}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-[#0A2540] bg-white border border-[#E2E8F0] hover:bg-[#F7FAFC] rounded-lg transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4B2] disabled:opacity-60"
+            title="Descargar libro Excel estilizado con las 26 hojas, guía LEEME y columnas obligatorias en rojo"
+          >
+            {isGeneratingTemplate ? (
+              <RefreshCw className="w-4 h-4 text-[#00D4B2] animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="w-4 h-4 text-[#00D4B2]" aria-hidden="true" />
+            )}
+            <span>{isGeneratingTemplate ? 'Generando plantilla...' : 'Descargar plantilla vacía (.xlsx)'}</span>
+          </button>
+        </div>
       </div>
+
 
       {/* Banner de notificación */}
       {notificationMsg && (
@@ -307,8 +368,59 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
         </div>
       )}
 
-      {/* Zona principal de Carga */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Subnavegación de pestañas: Carga, Capturar y editar, Historial */}
+      <div className="flex border-b border-[#E2E8F0] gap-2 overflow-x-auto bg-white p-1 rounded-xl shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setActiveTab('carga')}
+          className={`flex items-center gap-2 py-2.5 px-4 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+            activeTab === 'carga'
+              ? 'bg-[#0A2540] text-white shadow-xs'
+              : 'text-[#718096] hover:text-[#0A2540] hover:bg-slate-50'
+          }`}
+        >
+          <UploadCloud className="w-4 h-4 text-[#00D4B2]" />
+          <span>Carga y validación (.xlsx)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('editar')}
+          className={`flex items-center gap-2 py-2.5 px-4 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+            activeTab === 'editar'
+              ? 'bg-[#0A2540] text-white shadow-xs'
+              : 'text-[#718096] hover:text-[#0A2540] hover:bg-slate-50'
+          }`}
+        >
+          <Edit3 className="w-4 h-4 text-[#00D4B2]" />
+          <span>Capturar y editar</span>
+          <span
+            className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+              activeTab === 'editar' ? 'bg-[#00D4B2]/30 text-white' : 'bg-[#00D4B2]/15 text-[#0A2540]'
+            }`}
+          >
+            Tablas & Avance
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('historial')}
+          className={`flex items-center gap-2 py-2.5 px-4 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+            activeTab === 'historial'
+              ? 'bg-[#0A2540] text-white shadow-xs'
+              : 'text-[#718096] hover:text-[#0A2540] hover:bg-slate-50'
+          }`}
+        >
+          <History className="w-4 h-4 text-[#00D4B2]" />
+          <span>Historial y versiones</span>
+        </button>
+      </div>
+
+      {/* Pestaña 1: Carga y Validación */}
+      {activeTab === 'carga' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 shadow-xs">
             <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0] mb-5">
@@ -616,6 +728,19 @@ export const DatosSection: React.FC<DatosSectionProps> = ({ cutoffWeek }) => {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Pestaña 2: Capturar y editar (Formulario de avance rápido y Tablas editables con validación) */}
+      {activeTab === 'editar' && (
+        <div className="space-y-6">
+          <FormularioAvanceSemanal cutoffWeek={cutoffWeek} />
+          <TablaEditableHoja />
+        </div>
+      )}
+
+      {/* Pestaña 3: Historial y versiones (Auditoría cronológica y restauración de versiones) */}
+      {activeTab === 'historial' && <HistorialTab />}
+
 
       {/* Modal de Captura cuando falta la hoja Proyecto (Requisito 7) */}
       <ProyectoFormModal

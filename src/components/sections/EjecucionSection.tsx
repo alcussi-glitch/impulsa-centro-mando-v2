@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Cpu, Download, PlayCircle, AlertOctagon, ShoppingCart, CheckSquare, Zap, Clock } from 'lucide-react';
 import { useProjectData } from '../../context/ProjectDataContext.tsx';
 import { EmptyState } from '../common/EmptyState.tsx';
-import { EvmEnginePendingCard } from '../common/EvmEnginePendingCard.tsx';
+import { EjecucionAnalyticsCard } from '../analytics/EjecucionAnalyticsCard.tsx';
 
 interface SectionProps {
   cutoffWeek: number;
@@ -17,7 +17,7 @@ interface SectionProps {
 type TabType = 'automatizaciones' | 'incidentes' | 'adquisiciones' | 'calidad';
 
 export const EjecucionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigateToData }) => {
-  const { projectData } = useProjectData();
+  const { projectData, projectAnalytics } = useProjectData();
   const [activeTab, setActiveTab] = useState<TabType>('automatizaciones');
 
   const automatizaciones = projectData?.automatizaciones || [];
@@ -97,18 +97,8 @@ export const EjecucionSection: React.FC<SectionProps> = ({ cutoffWeek, onNavigat
         </div>
       </div>
 
-      {/* Indicadores en espera de EVM */}
-      <EvmEnginePendingCard
-        title="Monitoreo de Flujos en Tiempo Real y Alertas de Desviación EVM"
-        description="Las métricas de tasa de éxito, tiempos acumulados y disparadores automáticos se activarán con el motor analítico."
-        pendingIndicators={[
-          'Tasa de éxito operativo en vivo (%) y volumen de transacciones procesadas',
-          'Ahorro estimado en horas-hombre mensuales por proceso automatizado',
-          'Disparadores automáticos de alertas EVM (cuando CPI o SPI < 0.90)',
-          'Tasa de cierre y tiempo medio de resolución de incidentes operativos',
-          'Cumplimiento porcentual de criterios de calidad y verificación de entregables',
-        ]}
-      />
+      {/* Analítica de Ejecución: Incidentes por Prioridad, Calidad y Cambios */}
+      <EjecucionAnalyticsCard analytics={projectAnalytics.ejecucion} cutoffWeek={cutoffWeek} />
 
       {/* Pestañas de subcolecciones */}
       <div className="flex flex-wrap gap-2 border-b border-[#E2E8F0] pb-2">
